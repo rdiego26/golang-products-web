@@ -1,21 +1,15 @@
 package main
 
 import (
+	"fmt"
 	_ "github.com/lib/pq"
-	"golang-products-web/models"
-	"html/template"
+	"golang-products-web/routes"
 	"net/http"
 )
 
-var temp = template.Must(template.ParseGlob("templates/*.html"))
+const PORT = 8000
 
 func main() {
-	http.HandleFunc("/", index)
-	http.ListenAndServe(":8000", nil)
-}
-
-func index(w http.ResponseWriter, r *http.Request) {
-	var products = models.GetAllProducts()
-
-	temp.ExecuteTemplate(w, "Index", products)
+	routes.RegisterRoutes()
+	http.ListenAndServe(fmt.Sprintf(":%d", PORT), nil)
 }
