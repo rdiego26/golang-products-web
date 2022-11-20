@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS products (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     name TEXT,
     description TEXT,
-    price NUMERIC(6,4),
+    price DECIMAL,
     quantity integer
 );
 

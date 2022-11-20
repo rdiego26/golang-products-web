@@ -1,6 +1,9 @@
 package models
 
-import "golang-products-web/database"
+import (
+	"golang-products-web/database"
+	"log"
+)
 
 type Product struct {
 	Id          string
@@ -42,4 +45,22 @@ func GetAllProducts() []Product {
 	defer dbConnection.Close()
 
 	return products
+}
+
+func CreateProduct(name, description string, price float64, quantity int) {
+	db := database.GetConnection()
+
+	log.Println("Received:", name, description, price, quantity)
+
+	insertData, err := db.Prepare("INSERT INTO products(name, description, price, quantity) VALUES($1, $2, $3, $4)")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	_, err = insertData.Exec(name, description, price, quantity)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	defer db.Close()
 }

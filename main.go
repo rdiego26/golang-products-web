@@ -11,5 +11,6 @@ const PORT = 8000
 
 func main() {
 	routes.RegisterRoutes()
+	fmt.Printf("Running server on %d\n", PORT)
 	http.ListenAndServe(fmt.Sprintf(":%d", PORT), nil)
 }
