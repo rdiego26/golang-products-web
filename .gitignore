@@ -16,3 +16,6 @@
 
 # Idea
 .idea/
+
+# Compiled
+golang-products-web

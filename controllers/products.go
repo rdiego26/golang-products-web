@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/google/uuid"
 	"golang-products-web/models"
 	"html/template"
 	"log"
@@ -56,5 +57,43 @@ func Edit(w http.ResponseWriter, r *http.Request) {
 	productId := r.URL.Query().Get("id")
 	log.Printf("Received productId=%s\n", productId)
 
-	temp.ExecuteTemplate(w, "Edit", models.GetProduct(productId))
+	parsedProductId, err := uuid.Parse(productId)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	temp.ExecuteTemplate(w, "Edit", models.GetProduct(parsedProductId))
+}
+
+func Update(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		productId := r.FormValue("id")
+		name := r.FormValue("name")
+		description := r.FormValue("description")
+		price := r.FormValue("price")
+		quantity := r.FormValue("quantity")
+
+		log.Printf("Received from POST: %s %s %s %s %s\n", productId, name, description, price, quantity)
+
+		convertedPrice, err := strconv.ParseFloat(price, 64)
+		if err != nil {
+			log.Println("Error during price conversion:", err)
+			panic(err.Error())
+		}
+
+		convertedQuantity, err := strconv.Atoi(quantity)
+		if err != nil {
+			log.Println("Error during quantity conversion:", err)
+			panic(err.Error())
+		}
+
+		models.UpdateProduct(productId, name, description, convertedPrice, convertedQuantity)
+
+		parsedProductId, err := uuid.Parse(productId)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		temp.ExecuteTemplate(w, "Edit", models.GetProduct(parsedProductId))
+	}
 }

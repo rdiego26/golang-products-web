@@ -1,6 +1,7 @@
 package models
 
 import (
+	"github.com/google/uuid"
 	"golang-products-web/database"
 	"log"
 )
@@ -81,7 +82,7 @@ func DeleteProduct(productId string) {
 	defer db.Close()
 }
 
-func GetProduct(productId string) Product {
+func GetProduct(productId uuid.UUID) Product {
 	dbConnection := database.GetConnection()
 
 	fetchedProduct, err := dbConnection.Query("SELECT * FROM products WHERE id=$1", productId)
@@ -111,4 +112,25 @@ func GetProduct(productId string) Product {
 	}
 
 	return result
+}
+
+func UpdateProduct(productId string, name string, description string, price float64, quantity int) Product {
+	db := database.GetConnection()
+
+	updateData, err := db.Prepare("UPDATE products SET name=$1, description=$2, price=$3, quantity=$4 WHERE id=$5")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	parsedProductId, err := uuid.Parse(productId)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	_, err = updateData.Exec(name, description, price, quantity, parsedProductId)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return GetProduct(parsedProductId)
 }
