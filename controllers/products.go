@@ -11,19 +11,32 @@ import (
 
 var temp = template.Must(template.ParseGlob("templates/*.html"))
 
+// Home page
 func Index(w http.ResponseWriter, _ *http.Request) {
-	var products = models.GetAllProducts()
+	products, err := models.GetAllProducts()
+	if err != nil {
+		http.Error(w, "Error fetching products", http.StatusInternalServerError)
+		log.Printf("Error fetching products: %v\n", err)
+		return
+	}
 
-	temp.ExecuteTemplate(w, "Index", products)
+	if err := temp.ExecuteTemplate(w, "Index", products); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		log.Printf("Error rendering template: %v\n", err)
+	}
 }
 
+// New product page
 func New(w http.ResponseWriter, _ *http.Request) {
-
-	temp.ExecuteTemplate(w, "New", nil)
+	if err := temp.ExecuteTemplate(w, "New", nil); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		log.Printf("Error rendering template: %v\n", err)
+	}
 }
 
+// Insert product
 func Insert(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
+	if r.Method == http.MethodPost {
 		name := r.FormValue("name")
 		description := r.FormValue("description")
 		price := r.FormValue("price")
@@ -31,69 +44,111 @@ func Insert(w http.ResponseWriter, r *http.Request) {
 
 		convertedPrice, err := strconv.ParseFloat(price, 64)
 		if err != nil {
-			log.Println("Error during price conversion:", err)
+			http.Error(w, "Invalid price", http.StatusBadRequest)
+			log.Printf("Error converting price: %v\n", err)
+			return
 		}
 
 		convertedQuantity, err := strconv.Atoi(quantity)
 		if err != nil {
-			log.Println("Error during quantity conversion:", err)
+			http.Error(w, "Invalid quantity", http.StatusBadRequest)
+			log.Printf("Error converting quantity: %v\n", err)
+			return
 		}
 
-		models.CreateProduct(name, description, float64(convertedPrice), convertedQuantity)
+		err = models.CreateProduct(name, description, convertedPrice, convertedQuantity)
+		if err != nil {
+			http.Error(w, "Error creating product", http.StatusInternalServerError)
+			log.Printf("Error creating product: %v\n", err)
+			return
+		}
+
+		log.Printf("Product successfully created: %s\n", name)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
-	http.Redirect(w, r, "/", 301)
 }
 
+// Delete product
 func Delete(w http.ResponseWriter, r *http.Request) {
 	productId := r.URL.Query().Get("id")
-	log.Printf("Received productId=%s\n", productId)
-
-	models.DeleteProduct(productId)
-
-	http.Redirect(w, r, "/", 301)
-}
-
-func Edit(w http.ResponseWriter, r *http.Request) {
-	productId := r.URL.Query().Get("id")
-	log.Printf("Received productId=%s\n", productId)
-
-	parsedProductId, err := uuid.Parse(productId)
-	if err != nil {
-		panic(err.Error())
+	if _, err := uuid.Parse(productId); err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		log.Printf("Invalid ID: %v\n", err)
+		return
 	}
 
-	temp.ExecuteTemplate(w, "Edit", models.GetProduct(parsedProductId))
+	err := models.DeleteProduct(productId)
+	if err != nil {
+		http.Error(w, "Error deleting product", http.StatusInternalServerError)
+		log.Printf("Error deleting product: %v\n", err)
+		return
+	}
+
+	log.Printf("Product successfully deleted: %s\n", productId)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// Edit product
+func Edit(w http.ResponseWriter, r *http.Request) {
+	productId := r.URL.Query().Get("id")
+	if _, err := uuid.Parse(productId); err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		log.Printf("Invalid ID: %v\n", err)
+		return
+	}
+
+	product, err := models.GetProduct(productId)
+	if err != nil {
+		http.Error(w, "Error fetching product", http.StatusInternalServerError)
+		log.Printf("Error fetching product: %v\n", err)
+		return
+	}
+
+	if err := temp.ExecuteTemplate(w, "Edit", product); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		log.Printf("Error rendering template: %v\n", err)
+	}
+}
+
+// Update product
 func Update(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
+	if r.Method == http.MethodPost {
 		productId := r.FormValue("id")
 		name := r.FormValue("name")
 		description := r.FormValue("description")
 		price := r.FormValue("price")
 		quantity := r.FormValue("quantity")
 
-		log.Printf("Received from POST: %s %s %s %s %s\n", productId, name, description, price, quantity)
+		log.Printf("Received for update: %s %s %s %s %s\n", productId, name, description, price, quantity)
+
+		if _, err := uuid.Parse(productId); err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			log.Printf("Invalid ID: %v\n", err)
+			return
+		}
 
 		convertedPrice, err := strconv.ParseFloat(price, 64)
 		if err != nil {
-			log.Println("Error during price conversion:", err)
-			panic(err.Error())
+			http.Error(w, "Invalid price", http.StatusBadRequest)
+			log.Printf("Error converting price: %v\n", err)
+			return
 		}
 
 		convertedQuantity, err := strconv.Atoi(quantity)
 		if err != nil {
-			log.Println("Error during quantity conversion:", err)
-			panic(err.Error())
+			http.Error(w, "Invalid quantity", http.StatusBadRequest)
+			log.Printf("Error converting quantity: %v\n", err)
+			return
 		}
 
-		models.UpdateProduct(productId, name, description, convertedPrice, convertedQuantity)
-
-		parsedProductId, err := uuid.Parse(productId)
+		updatedProduct, err := models.UpdateProduct(productId, name, description, convertedPrice, convertedQuantity)
 		if err != nil {
-			panic(err.Error())
+			http.Error(w, "Error updating product", http.StatusInternalServerError)
+			log.Printf("Error updating product: %v\n", err)
+			return
 		}
 
-		temp.ExecuteTemplate(w, "Edit", models.GetProduct(parsedProductId))
+		log.Printf("Product successfully updated: %v\n", updatedProduct)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }

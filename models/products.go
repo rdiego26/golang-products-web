@@ -1,11 +1,15 @@
 package models
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"golang-products-web/database"
 	"log"
 )
 
+// Product structure
 type Product struct {
 	Id          string
 	Name        string
@@ -14,123 +18,125 @@ type Product struct {
 	Quantity    int
 }
 
-func GetAllProducts() []Product {
-	dbConnection := database.GetConnection()
+// Get all products
+func GetAllProducts() ([]Product, error) {
+	db := database.GetConnection()
+	defer db.Close()
 
-	allProducts, err := dbConnection.Query("SELECT * FROM products ORDER BY name")
+	rows, err := db.Query("SELECT id, name, description, price, quantity FROM products ORDER BY name")
 	if err != nil {
-		panic(err.Error())
+		return nil, fmt.Errorf("error fetching products: %w", err)
 	}
+	defer rows.Close()
 
-	product := Product{}
 	var products []Product
-
-	for allProducts.Next() {
-		var id, name, description string
-		var price float64
-		var quantity int
-
-		err = allProducts.Scan(&id, &name, &description, &price, &quantity)
+	for rows.Next() {
+		var product Product
+		err := rows.Scan(&product.Id, &product.Name, &product.Description, &product.Price, &product.Quantity)
 		if err != nil {
-			panic(err.Error())
+			return nil, fmt.Errorf("error scanning product: %w", err)
 		}
-
-		product.Id = id
-		product.Name = name
-		product.Description = description
-		product.Price = price
-		product.Quantity = quantity
-
 		products = append(products, product)
 	}
-	defer dbConnection.Close()
 
-	return products
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over products: %w", err)
+	}
+
+	return products, nil
 }
 
-func CreateProduct(name, description string, price float64, quantity int) {
+// Create a product
+func CreateProduct(name, description string, price float64, quantity int) error {
+	if name == "" || price < 0 || quantity < 0 {
+		return errors.New("invalid values for product creation")
+	}
+
 	db := database.GetConnection()
-
-	log.Println("Received:", name, description, price, quantity)
-
-	insertData, err := db.Prepare("INSERT INTO products(name, description, price, quantity) VALUES($1, $2, $3, $4)")
-	if err != nil {
-		panic(err.Error())
-	}
-
-	_, err = insertData.Exec(name, description, price, quantity)
-	if err != nil {
-		panic(err.Error())
-	}
-
 	defer db.Close()
+
+	query := `INSERT INTO products(name, description, price, quantity) VALUES($1, $2, $3, $4)`
+	_, err := db.Exec(query, name, description, price, quantity)
+	if err != nil {
+		return fmt.Errorf("error inserting product: %w", err)
+	}
+
+	log.Printf("Product created: %s", name)
+	return nil
 }
 
-func DeleteProduct(productId string) {
+// Delete a product
+func DeleteProduct(productId string) error {
+	if _, err := uuid.Parse(productId); err != nil {
+		return fmt.Errorf("invalid UUID: %w", err)
+	}
+
 	db := database.GetConnection()
-
-	removeData, err := db.Prepare("DELETE FROM products WHERE id=$1")
-	if err != nil {
-		panic(err.Error())
-	}
-
-	_, err = removeData.Exec(productId)
-	if err != nil {
-		panic(err.Error())
-	}
-
 	defer db.Close()
-}
 
-func GetProduct(productId uuid.UUID) Product {
-	dbConnection := database.GetConnection()
-
-	fetchedProduct, err := dbConnection.Query("SELECT * FROM products WHERE id=$1", productId)
+	query := `DELETE FROM products WHERE id=$1`
+	result, err := db.Exec(query, productId)
 	if err != nil {
-		panic(err.Error())
+		return fmt.Errorf("error deleting product: %w", err)
 	}
 
-	defer dbConnection.Close()
-
-	result := Product{}
-
-	for fetchedProduct.Next() {
-		var id, name, description string
-		var price float64
-		var quantity int
-
-		err = fetchedProduct.Scan(&id, &name, &description, &price, &quantity)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		result.Id = id
-		result.Name = name
-		result.Description = description
-		result.Price = price
-		result.Quantity = quantity
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("no product found to delete with id: %s", productId)
 	}
 
-	return result
+	log.Printf("Product successfully deleted: %s", productId)
+	return nil
 }
 
-func UpdateProduct(productId string, name string, description string, price float64, quantity int) Product {
+// Get a specific product
+func GetProduct(productId string) (*Product, error) {
+	if _, err := uuid.Parse(productId); err != nil {
+		return nil, fmt.Errorf("invalid UUID: %w", err)
+	}
+
 	db := database.GetConnection()
+	defer db.Close()
 
-	updateData, err := db.Prepare("UPDATE products SET name=$1, description=$2, price=$3, quantity=$4 WHERE id=$5")
+	query := `SELECT id, name, description, price, quantity FROM products WHERE id=$1`
+	row := db.QueryRow(query, productId)
+
+	var product Product
+	err := row.Scan(&product.Id, &product.Name, &product.Description, &product.Price, &product.Quantity)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("product not found with id: %s", productId)
+	}
 	if err != nil {
-		panic(err.Error())
+		return nil, fmt.Errorf("error fetching product: %w", err)
 	}
 
-	parsedProductId, err := uuid.Parse(productId)
-	if err != nil {
-		panic(err.Error())
+	return &product, nil
+}
+
+// Update a product
+func UpdateProduct(productId, name, description string, price float64, quantity int) (*Product, error) {
+	if _, err := uuid.Parse(productId); err != nil {
+		return nil, fmt.Errorf("invalid UUID: %w", err)
 	}
 
-	_, err = updateData.Exec(name, description, price, quantity, parsedProductId)
-	if err != nil {
-		panic(err.Error())
+	if name == "" || price < 0 || quantity < 0 {
+		return nil, errors.New("invalid values for product update")
 	}
 
-	return GetProduct(parsedProductId)
+	db := database.GetConnection()
+	defer db.Close()
+
+	query := `UPDATE products SET name=$1, description=$2, price=$3, quantity=$4 WHERE id=$5`
+	result, err := db.Exec(query, name, description, price, quantity, productId)
+	if err != nil {
+		return nil, fmt.Errorf("error updating product: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("no product found to update with id: %s", productId)
+	}
+
+	// Return the updated product
+	return GetProduct(productId)
 }
